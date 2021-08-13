@@ -1,14 +1,20 @@
 <?php
+
 namespace App\Repositories;
 
+use App\Jobs\CreateMovies;
 use Illuminate\Support\Facades\Http;
 use App\Movie;
 use App\Category;
 
-class MovieRepository{
+class MovieRepository
+{
 
     /**
      * get the movies after sorting by required data
+     *
+     * @param $request
+     * @return mixed
      */
     public function getMovies($request)
     {
@@ -25,11 +31,13 @@ class MovieRepository{
         $query = $this->MoviesSort($query, $request);
         $result = $query->get();
 
-        return $result ;
+        return $result;
 
     }
 
     /**
+     * sort movies asc or desc by popularity ,vote_average or both
+     *
      * @param $query
      * @param $request
      * @return $query after sorting
@@ -57,10 +65,12 @@ class MovieRepository{
     }
 
     /**
+     *
      * @param $url
      * @return mixed
      */
-    public function apiRequest($url){
+    public function apiRequest($url)
+    {
         $response = Http::get($url, [
             'api_key' => 'b36f6fd2b08fc308e35ccf9eff191f9d',
             'language' => 'en-US',
@@ -70,12 +80,17 @@ class MovieRepository{
 
     /**
      * get categories from themoviedb and store them in database
+     *
+     * @return void
      */
-    public function storeCategories(){
+    public function storeCategories()
+    {
         $results = $this->apiRequest('https://api.themoviedb.org/3/genre/movie/list');
 
-        foreach ($results->genres as $result){
-            Category::create([
+        foreach ($results->genres as $result) {
+            Category::firstOrCreate([
+                'id' => $result->id,
+            ], [
                 'id' => $result->id,
                 'name' => $result->name,
             ]);
@@ -84,25 +99,41 @@ class MovieRepository{
     }
 
     /**
-     * get popular movies from themoviedb and store them in database
+     * get popular movies from themoviedb and create object from CreateMovies job to execute it
+     *
+     * @return void
      */
-    public function storeMovies(){
+    public function storeMovies()
+    {
         $results = $this->apiRequest('https://api.themoviedb.org/3/movie/popular');
 
-        foreach ($results->results as $result){
-            $movie = Movie::create([
-                'id' => $result->id,
-                'title' => $result->title,
-                'overview' => $result->overview,
-                'release_date' => $result->release_date,
-                'popularity' => $result->popularity,
-                'vote_average' => $result->vote_average,
-            ]);
-
-            $movie->categories()->sync($result->genre_ids);
-            $movie->save();
-
+        foreach ($results->results as $result) {
+            dispatch(new CreateMovies($result, $this));
         }
+    }
+
+    /**
+     * save data to movies table
+     *
+     * @param $data
+     * @return void
+     */
+
+    public function createMovie($data)
+    {
+        $movie = Movie::firstOrCreate([
+            'id' => $data->id,
+        ], [
+            'id' => $data->id,
+            'title' => $data->title,
+            'overview' => $data->overview,
+            'release_date' => $data->release_date,
+            'popularity' => $data->popularity,
+            'vote_average' => $data->vote_average,
+        ]);
+
+        $movie->categories()->sync($data->genre_ids);
+        $movie->save();
 
     }
 }
